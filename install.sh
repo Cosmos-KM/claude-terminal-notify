@@ -33,7 +33,7 @@ command -v python3 >/dev/null 2>&1 || die "python3 が必要です。'xcode-sele
 
 if ! ps -Ao comm= 2>/dev/null | grep -q '/Terminal\.app/Contents/MacOS/Terminal$'; then
   warn "Terminal.app が動いていません。タブの色付けは Terminal.app でのみ動きます"
-  warn "（iTerm2・Ghostty・VS Code 等では色は付かず、音と通知だけ動きます）。"
+  warn "（iTerm2・Ghostty・VS Code 等では色は付かず、音と読み上げだけ動きます）。"
 fi
 
 # ── 取り外し ────────────────────────────────────
@@ -102,8 +102,9 @@ cat <<'NOTE'
      初回だけ「Terminal を操作する許可」を求められます。許可しないと色が付きません。
      設定 → プライバシーとセキュリティ → 自動化 → ターミナル → Terminal をオン
 
-  2. 通知の許可
-     バナーを出すには、設定 → 通知 → ターミナル（またはスクリプトエディタ）をオン
+  2. 通知の許可（既定では不要）
+     ポップアップは既定で出しません。出したい場合だけ notify.sh の
+     BANNER_ENABLED を 1 にし、設定 → 通知 → ターミナル をオンにしてください
 
   3. 平常色の記録
      ターミナルのテーマを変えたときは、色が付いていない状態で1回だけ実行してください。

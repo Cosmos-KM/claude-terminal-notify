@@ -19,12 +19,16 @@
 
 **音と読み上げ**
 
-| きっかけ | 効果音 | 読み上げ（英語） | 通知バナー |
+| きっかけ | 効果音 | 読み上げ（英語） | 端末ベル |
 | --- | --- | --- | --- |
-| 作業完了 | 下降音 | "Done" | `Claude Code ✅ プロジェクト名` |
-| 承認待ち | 上昇音 | "Permission needed" | `Claude Code 🔔 プロジェクト名` |
+| 作業完了 | 下降音 | "Done" | 鳴る |
+| 承認待ち | 上昇音 | "Permission needed" | 鳴る |
 
-Codex から呼ばれたときはバナーが `Codex ✅ / 🔔` になります。
+Claude Code から呼ばれても Codex から呼ばれても同じです。
+
+画面に出るポップアップ（通知センターのバナー）は**既定では出しません**。
+音と読み上げで足りるためです。出したい場合は `notify.sh` の
+`BANNER_ENABLED` を `1` にしてください（下記「好みに合わせる」を参照）。
 
 ## 入れ方
 
@@ -37,11 +41,12 @@ cd terminal-notify
 入っている CLI（Claude Code / Codex CLI）を検出して、両方に組み込みます。
 片方だけなら `./install.sh --claude` または `./install.sh --codex`。
 
-インストール後に**必ず**次の2つを許可してください。どちらも初回だけです。
+インストール後に次の2点を確認してください。
 
 1. **自動化** — 設定 → プライバシーとセキュリティ → 自動化 → ターミナル → Terminal をオン
    （これが無いとタブの色が変わりません）
-2. **通知** — 設定 → 通知 → ターミナル をオン（バナーを出す場合）
+2. **通知** — 既定ではポップアップを出さないので、設定は不要です。
+   `BANNER_ENABLED=1` にした場合だけ、設定 → 通知 → ターミナル をオンにしてください
 
 すでに開いているセッションには効きません。開き直してください。
 Codex は初回起動時にフックの信頼を確認してくるので、内容を見て許可します。
@@ -68,7 +73,7 @@ Codex は初回起動時にフックの信頼を確認してくるので、内�
 | | |
 | --- | --- |
 | OS | macOS |
-| ターミナル | **色付けは Terminal.app のみ。** iTerm2・Ghostty・VS Code 等では色は付かず、音と通知だけ動く |
+| ターミナル | **色付けは Terminal.app のみ。** iTerm2・Ghostty・VS Code 等では色は付かず、音と読み上げだけ動く |
 | 必要なもの | `python3`（インストール時のみ。無ければ `xcode-select --install`） |
 | `jq` | あれば使う。無ければ `sed` で代用するので入れなくてよい |
 
@@ -79,7 +84,7 @@ Codex は初回起動時にフックの信頼を確認してくるので、内�
 ```
 install.sh              入れる・外す・確認
 lib/install_hooks.py    設定ファイルへの足し引き（install.sh から呼ばれる）
-hooks/notify.sh         音・読み上げ・バナー・端末ベル
+hooks/notify.sh         効果音・読み上げ・端末ベル（バナーは既定でオフ）
 hooks/tabcolor.sh       タブ背景色
 ```
 
@@ -113,7 +118,8 @@ hooks/tabcolor.sh       タブ背景色
 
 | 設定 | 意味 |
 | --- | --- |
-| `VOICE_ENABLED` / `BANNER_ENABLED` / `SOUND_ENABLED` / `BELL_ENABLED` | 各手段のオン・オフ |
+| `VOICE_ENABLED` / `SOUND_ENABLED` / `BELL_ENABLED` | 読み上げ・効果音・端末ベルのオン・オフ |
+| `BANNER_ENABLED` | 通知センターのポップアップ。**既定は `0`（出さない）**。`1` で出す |
 | `VOICE_NAME` / `VOICE_RATE` | 読み上げの声と速さ。`say -v '?'` で声の一覧が見られる |
 | `SOUND_STOP` / `SOUND_NOTIFY` | 効果音のファイル。`/System/Library/Sounds/` の音も指定できる |
 | `SPEECH_STOP` / `SPEECH_PERMISSION` ほか | 読み上げる文言。日本語にもできる |

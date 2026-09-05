@@ -14,6 +14,12 @@ BELL_ENABLED=1                  # 1=端末ベルを鳴らす / 0=鳴らさない
                                 # Terminal の「視覚ベル」ONでウィンドウが光る。
                                 # Claude Code は preferredNotifChannel でも鳴らせるが、
                                 # Codex CLI には相当設定が無いのでここで鳴らす。
+TERMINAL_ONLY=1                 # 1=ターミナルで動かしているときだけ通知する
+                                # 0=どこで動いていても通知する
+                                # フックの登録先（settings.json / hooks.json）は
+                                # ターミナル版とデスクトップアプリ版で共有されるため、
+                                # 既定ではアプリ内で動いているときは黙る。
+                                # アプリには独自の通知があるので二重に鳴らさない。
 
 VOICE_NAME="Samantha"           # `say -v '?'` で一覧が見られる
 VOICE_RATE=200                  # 読み上げ速度（既定は 180 前後）
@@ -32,6 +38,29 @@ SPEECH_PERMISSION="Permission needed"
 SPEECH_WAITING="Waiting for your input"
 SPEECH_OTHER="Claude needs you"  # message はあるが分類できなかった場合のみ
 # ────────────────────────────────────────────────
+
+# 親プロセスを辿り、ターミナルの中で動いているかを判定する。
+# デスクトップアプリ（Claude.app / ChatGPT.app）が直接起動した CLI は
+# 制御端末を持たない（tty が ?? になる）。さらに念のため、
+# 途中でアプリ本体に行き着いた場合も「ターミナルではない」と判定する。
+# 引数で開始 PID を渡せる（テスト用。既定は自分の親）。
+in_terminal() {
+  local pid="${1:-$PPID}" tty_found=0 t cmd n=0
+  while [ -n "$pid" ] && [ "$pid" -gt 1 ] 2>/dev/null && [ $n -lt 12 ]; do
+    cmd="$(ps -o args= -p "$pid" 2>/dev/null)"
+    case "$cmd" in
+      */Claude.app/*|*/ChatGPT.app/*|*/Cursor.app/*|*/Visual\ Studio\ Code.app/*)
+        return 1 ;;
+    esac
+    t="$(ps -o tty= -p "$pid" 2>/dev/null | tr -d ' ')"
+    [ -n "$t" ] && [ "$t" != "??" ] && tty_found=1
+    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+    n=$((n + 1))
+  done
+  [ "$tty_found" = "1" ]
+}
+
+[ "$TERMINAL_ONLY" = "1" ] && ! in_terminal && exit 0
 
 EVENT="${1:-stop}"
 PAYLOAD="$(cat)"

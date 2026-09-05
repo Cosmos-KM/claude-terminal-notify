@@ -2,7 +2,7 @@
 # Claude Code / Codex CLI の状態を Terminal.app のタブの見た目で表示する。
 #
 #   tabcolor.sh init       セッション開始：元の背景色・カーソル色・タイトルを記録して無色へ
-#   tabcolor.sh working    作業中：薄い暖色
+#   tabcolor.sh working    作業中：ごく薄い青紫
 #   tabcolor.sh done       完了：薄い緑。フォアグラウンドにすると無色へ戻る
 #   tabcolor.sh attention  承認待ち：応答するまで知らせ続ける（下記）
 #   tabcolor.sh resume     承認待ちだった場合だけ作業中へ戻す（PostToolUse 用・軽量）
@@ -10,10 +10,13 @@
 #   tabcolor.sh reset      平常の色・タイトルを記録し直す（テーマ変更後に1回だけ）
 #
 # 承認待ちの見せ方は、そのタブが最前面かどうかで切り替わる。
-#   バックグラウンド … 濃いオレンジで背景全面を速く点滅（離れていても気づけるように）
+#   バックグラウンド … 背景全面を藤色でゆっくり明滅（離れていても気づけるように）
 #   フォアグラウンド … 背景は平常色を基本とし、ATTENTION_FG_PERIOD 秒に1回だけ
-#                      薄いオレンジを ATTENTION_FG_ON 秒あいだ点灯させる。
+#                      薄い藤色へふわりと明るくして戻す。
 #                      読んでいる最中はほぼ平常色なので文字が読める。
+#
+# 明滅は「明るさ 0〜100 の数列」を先に作り、AppleScript 側はそれを順に流すだけにする。
+# なめらかな明滅（fade）と 0か100かの点滅（blink）の違いは、数列の中身だけになる。
 #
 # Terminal.app がタブ単位で変えられるのは背景色・カーソル色・文字色・タイトルだけで、
 # 枠線・タブバー・プロンプト入力欄だけを塗るプロパティは存在しない。そのうち
@@ -26,21 +29,34 @@
 #
 # ─── 設定 ────────────────────────────────────────
 # 元の背景色に混ぜる色と、その割合(%)。割合 0 でその状態は無色のまま。
-WORKING_TINT=(26000 13000 0);   WORKING_MIX=16    # 作業中：薄い暖色
-DONE_TINT=(0 34000 10000);      DONE_MIX=20       # 完了：薄い緑
-ATTENTION_TINT=(52000 9000 0);  ATTENTION_MIX=60  # 承認待ち（背面）：濃いオレンジ
+WORKING_TINT=(14000 10000 26000);   WORKING_MIX=16    # 作業中：ごく薄い青紫
+DONE_TINT=(0 34000 10000);          DONE_MIX=20       # 完了：薄い緑
+ATTENTION_TINT=(30000 12000 58000); ATTENTION_MIX=30  # 承認待ち（背面）：藤色
+# 承認待ちに赤い色を使うと「エラーが起きた」と読まれてしまうため、
+# 警告の含意が無い藤色にしてある（2026-09-05 に橙から変更）。完了の緑とも
+# 色相がいちばん離れるので、視界の端に入っただけでも取り違えない。
 
-BLINK_INTERVAL=0.45        # 背面での点滅間隔（秒）。0 にすると点滅せず点灯のまま
+# 明滅のしかた。
+#   fade  … 平常色と藤色の間をなめらかに往復する（既定）
+#   blink … 0か100かで切り替える従来の点滅
+#   off   … 明滅させず点灯したまま
+BLINK_STYLE=fade
+BLINK_PERIOD=3.0           # fade：明滅1往復の秒数（暗→明→暗）。大きいほどゆっくり
+BLINK_STEPS=20             # fade：1往復の段階数。多いほど滑らかで、その分負荷が増える
+                           # 段階数 ÷ 周期 が1秒あたりの色変更の回数になる（既定は約7回）
+BLINK_INTERVAL=0.45        # blink：点滅間隔（秒）。0 は off と同じ扱い
 
 # 承認待ち × フォアグラウンド のときの見せ方
-ATTENTION_FG_MIX=4              # 点灯させる薄いオレンジの濃さ（0=平常色のまま）
-ATTENTION_FG_PERIOD=10          # 点灯の周期（秒）。この間隔で1回だけ点く
-ATTENTION_FG_ON=1               # 1回あたりの点灯時間（秒）
-ATTENTION_FG_TICK=0.5           # 内部の刻み（秒）。カーソルの反転間隔も兼ねる
-ATTENTION_FG_CURSOR=1           # 1=カーソルもオレンジで点滅させる / 0=背景の点灯だけ
-ATTENTION_CURSOR=(65535 28000 0)  # 点滅させるカーソル色（明側）。暗側は平常のカーソル色
+ATTENTION_FG_MIX=6              # いちばん明るいときの藤色の濃さ（0=平常色のまま）
+ATTENTION_FG_PERIOD=7           # 明滅の周期（秒）。この間隔で1回ふわりと明るくなる
+ATTENTION_FG_ON=1               # いちばん明るいところで保つ秒数
+ATTENTION_FG_FADE=0.8           # fade：明るくなる／暗くなるのにかける秒数（片道）
+ATTENTION_FG_STEP=0.15          # fade：内部の刻み（秒）
+ATTENTION_FG_TICK=0.5           # blink：内部の刻み（秒）
+ATTENTION_FG_CURSOR=1           # 1=カーソルも背景と一緒に明滅させる / 0=背景だけ
+ATTENTION_CURSOR=(48000 36000 65535)  # 明滅させるカーソル色（明側）。暗側は平常のカーソル色
 ATTENTION_FG_TITLE=0            # 1=タイトルも点滅させる（CLI 側の書き換えと競合する）
-ATTENTION_TITLE_ON="🟠 承認待ち"
+ATTENTION_TITLE_ON="🟣 承認待ち"
 ATTENTION_TITLE_OFF="⚪️ 承認待ち"
 
 FOCUS_CLEAR=1              # 1=完了の緑をフォアグラウンドで消す / 0=次の操作まで残す
@@ -126,6 +142,32 @@ fi
 # ────────────────────────────────────────────────
 
 STATE="${1:-done}"
+
+# ── 承認待ちと「入力待ち」を切り分ける ─────────────────
+# Claude Code の Notification は2種類の出来事で発火する。
+#   ・承認が必要      "Claude needs your permission to use Bash"
+#   ・入力待ち(idle)  "Claude is waiting for your input"
+# 両方を承認待ち扱いにすると、応答を読んでいるだけの平常時に
+# 承認待ちの明滅が始まってしまう（2026-09-01 に実際に発生）。
+# フック入力の message を見て、承認を求めるものだけ点滅させる。
+#
+# Codex の PermissionRequest には message が無く、そのイベント自体が
+# 承認要求なので、message を取れなかった場合は点滅させる（従来どおり）。
+if [ "$STATE" = "attention" ] && [ ! -t 0 ]; then
+  HOOK_INPUT=""
+  IFS= read -r -t 2 HOOK_INPUT 2>/dev/null || true
+  if [ -n "$HOOK_INPUT" ]; then
+    MSG="$(printf '%s' "$HOOK_INPUT" \
+           | sed -n 's/.*"message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+           | head -n 1)"
+    if [ -n "$MSG" ]; then
+      case "$MSG" in
+        *permission*|*Permission*|*approve*|*Approve*) ;;   # 承認待ち → 点滅させる
+        *) exit 0 ;;                                        # 入力待ちなど → 何もしない
+      esac
+    fi
+  fi
+fi
 MYTTY="$(find_tty)" || exit 0
 mkdir -p "$STATE_DIR" 2>/dev/null
 TTYNAME="$(basename "$MYTTY")"
@@ -250,10 +292,45 @@ tint() { # tint <R> <G> <B> <割合> → "R G B"
                     "$(mix "$O_B" "$3" "$4")"
 }
 
-# 前面の周期を刻み数へ落とす。1周期 FG_TICKS 刻み、うち先頭 FG_ON_TICKS 刻みが点灯。
-FG_TICKS="$(awk -v p="$ATTENTION_FG_PERIOD" -v t="$ATTENTION_FG_TICK" 'BEGIN{n=int(p/t+0.5); if(n<2)n=2; print n}')"
-FG_ON_TICKS="$(awk -v o="$ATTENTION_FG_ON" -v t="$ATTENTION_FG_TICK" -v n="$FG_TICKS" \
-               'BEGIN{k=int(o/t+0.5); if(k<1)k=1; if(k>n-1)k=n-1; print k}')"
+# ── 明るさ（0〜100）の数列を作る ────────────────────
+# 背面は「暗→明→暗」の1往復、前面は「1周期のうち1回だけ明るくなる」形。
+# cos を使うと両端がゆっくり・中央が速くなり、機械的な点滅より目にやわらかい。
+levels_fade_cycle() { # $1=段階数
+  awk -v n="$1" 'BEGIN{ if(n<2)n=2; pi=atan2(0,-1);
+    for(i=0;i<n;i++) printf "%s%d", (i?", ":""), int(100*(1-cos(2*pi*i/n))/2+0.5); print "" }'
+}
+levels_fade_pulse() { # $1=周期 $2=片道の秒数 $3=保つ秒数 $4=刻み
+  awk -v p="$1" -v f="$2" -v on="$3" -v t="$4" 'BEGIN{ pi=atan2(0,-1); if(f<=0)f=0.001;
+    if(2*f+on>p){ s=p/(2*f+on); f=f*s; on=on*s }   # 周期に収まらない設定は縮める
+    n=int(p/t+0.5); if(n<2)n=2;
+    for(i=0;i<n;i++){ x=i*t;
+      if(x<f)           v=100*(1-cos(pi*x/f))/2;
+      else if(x<f+on)   v=100;
+      else if(x<2*f+on) v=100*(1+cos(pi*(x-f-on)/f))/2;
+      else              v=0;
+      printf "%s%d", (i?", ":""), int(v+0.5) } print "" }'
+}
+levels_blink_pulse() { # $1=周期 $2=点灯秒数 $3=刻み
+  awk -v p="$1" -v on="$2" -v t="$3" 'BEGIN{ n=int(p/t+0.5); if(n<2)n=2;
+    k=int(on/t+0.5); if(k<1)k=1; if(k>n-1)k=n-1;
+    for(i=0;i<n;i++) printf "%s%d", (i?", ":""), (i<k?100:0); print "" }'
+}
+# 前面かどうかの確認は毎刻みでは重いので、おおむね 0.5 秒に1回に間引く
+front_every() { awk -v s="$1" 'BEGIN{ n=int(0.5/s+0.5); if(n<1)n=1; print n }'; }
+
+if [ "$BLINK_STYLE" = "fade" ]; then
+  BG_STEP="$(awk -v p="$BLINK_PERIOD" -v n="$BLINK_STEPS" 'BEGIN{ if(n<2)n=2; printf "%.3f", p/n }')"
+  BG_LEVELS="$(levels_fade_cycle "$BLINK_STEPS")"
+  FG_STEP="$ATTENTION_FG_STEP"
+  FG_LEVELS="$(levels_fade_pulse "$ATTENTION_FG_PERIOD" "$ATTENTION_FG_FADE" "$ATTENTION_FG_ON" "$ATTENTION_FG_STEP")"
+else
+  BG_STEP="$BLINK_INTERVAL"
+  BG_LEVELS="100, 0"
+  FG_STEP="$ATTENTION_FG_TICK"
+  FG_LEVELS="$(levels_blink_pulse "$ATTENTION_FG_PERIOD" "$ATTENTION_FG_ON" "$ATTENTION_FG_TICK")"
+fi
+FRONT_EVERY_BG="$(front_every "$BG_STEP")"
+FRONT_EVERY_FG="$(front_every "$FG_STEP")"
 
 # 走っている監視・点滅を退場させる（トークンを書き換えるだけ。kill はしない）。
 # 点滅中だった場合は、点滅プロセスが次のトークン確認に到達して抜けるまで待つ。
@@ -263,8 +340,8 @@ cancel_bg() {
   local was; was="$(cat "$STATE_FILE" 2>/dev/null)"
   printf 'none\n' > "$WATCH_FILE"
   if [ "$was" = "attention" ]; then
-    if [ "$BLINK_INTERVAL" != "0" ]; then
-      sleep "$(awk -v a="$BLINK_INTERVAL" -v b="$ATTENTION_FG_TICK" \
+    if [ "$BLINK_STYLE" != "off" ] && [ "$BLINK_INTERVAL" != "0" ]; then
+      sleep "$(awk -v a="$BG_STEP" -v b="$FG_STEP" \
                'BEGIN{m=(a+0>b+0)?a+0:b+0; print m+0.25}')"
     fi
     restore_extras
@@ -282,24 +359,34 @@ start_watch() {
 }
 
 # 承認待ちの表示を起動。
-#   $1$2$3 = 背面で点滅させる濃い色
-#   $4$5$6 = 前面で周期的に点灯させる薄い色
-# osascript 1本が常駐する（CPU 0.3% 程度）。トークンが変われば自分で終了する。
+#   $1$2$3 = 背面で明滅させる藤色（いちばん明るいとき）
+#   $4$5$6 = 前面で明滅させる薄い藤色（いちばん明るいとき）
+# osascript 1本が常駐する。色を変える回数だけ Terminal に描き直させるので、
+# 既定（1秒に約7回）で Terminal と合わせて1コアの数%。トークンが変われば自分で終了する。
 start_blink() {
   local token; token="$(new_token)"
   printf '%s\n' "$token" > "$WATCH_FILE"
-  local cycles=$(( FOCUS_MAX_MIN * 60 ))
+  local maxsecs=$(( FOCUS_MAX_MIN * 60 ))
 
   # カーソル併用・タイトル併用は設定で切れる。オンのときだけ行を差し込む。
-  local c_on="" c_off="" t_enable="" t_on="" t_off="" t_restore=""
+  local c_set="" t_enable="" t_block="" t_restore=""
   if [ "$ATTENTION_FG_CURSOR" = "1" ]; then
-    c_on="        tell application \"Terminal\" to set cursor color of target to {${ATTENTION_CURSOR[0]}, ${ATTENTION_CURSOR[1]}, ${ATTENTION_CURSOR[2]}}"
-    c_off="        tell application \"Terminal\" to set cursor color of target to {$C_R, $C_G, $C_B}"
+    c_set="            set cursor color of target to my blend(baseCUR, peakCUR, lv)"
   fi
   if [ "$ATTENTION_FG_TITLE" = "1" ]; then
     t_enable="      set title displays custom title of target to true"
-    t_on="        tell application \"Terminal\" to set custom title of target to \"$(esc "$ATTENTION_TITLE_ON")\""
-    t_off="        tell application \"Terminal\" to set custom title of target to \"$(esc "$ATTENTION_TITLE_OFF")\""
+    # タイトルには中間色が無いので、明るさが半分を越えたところで切り替える
+    t_block="          set wantOn to (lv > 50)
+          if wantOn is not titleOn then
+            tell application \"Terminal\"
+              if wantOn then
+                set custom title of target to \"$(esc "$ATTENTION_TITLE_ON")\"
+              else
+                set custom title of target to \"$(esc "$ATTENTION_TITLE_OFF")\"
+              end if
+            end tell
+            set titleOn to wantOn
+          end if"
     t_restore="      set custom title of target to \"$(esc "$(orig_title)")\"
       set title displays custom title of target to $(orig_tdct)"
   fi
@@ -327,62 +414,111 @@ on isFront()
   end tell
 end isFront
 
-on run
-  -- タブ参照は最初に1度だけ解決する（毎回探索すると点滅が遅くなる）
-  set target to missing value
+-- tty から自分のタブを探す
+on findTab()
   tell application "Terminal"
     repeat with w in windows
       repeat with t in tabs of w
-        if tty of t is "$MYTTY" then set target to t
+        if tty of t is "$MYTTY" then return t
       end repeat
     end repeat
   end tell
+  return missing value
+end findTab
+
+-- 保存したタブ参照が、まだ自分のタブを指しているか確かめる。
+-- Terminal のタブ参照は位置で解決されるため、ウィンドウが増減すると
+-- 黙って別のタブを指すようになる（2026-09-01 に実測）。放置すると
+-- 無関係なウィンドウを点滅させてしまうので、毎周ここで確かめ直す。
+-- 大半の周回は tty を1回読むだけで済み、探索は必要なときだけ走る。
+on ensureTab(cur)
+  try
+    tell application "Terminal"
+      if (tty of cur) is "$MYTTY" then return cur
+    end tell
+  end try
+  return my findTab()
+end ensureTab
+
+-- 平常色 a と承認待ちの色 b を、明るさ lv（0〜100）で混ぜる
+on blend(a, b, lv)
+  return {((item 1 of a) + ((item 1 of b) - (item 1 of a)) * lv / 100) as integer, ¬
+          ((item 2 of a) + ((item 2 of b) - (item 2 of a)) * lv / 100) as integer, ¬
+          ((item 3 of a) + ((item 3 of b) - (item 3 of a)) * lv / 100) as integer}
+end blend
+
+on run
+  set target to my findTab()
   if target is missing value then return
 
+  set baseBG to {$O_R, $O_G, $O_B}
+  set peakBG to {$1, $2, $3}
+  set peakFG to {$4, $5, $6}
+  set baseCUR to {$C_R, $C_G, $C_B}
+  set peakCUR to {${ATTENTION_CURSOR[0]}, ${ATTENTION_CURSOR[1]}, ${ATTENTION_CURSOR[2]}}
+  set bgLevels to {$BG_LEVELS}
+  set fgLevels to {$FG_LEVELS}
+
   set mode to ""
-  repeat $cycles times
+  set lastLv to -1
+  set titleOn to false
+  set startedAt to current date
+  repeat
     if not my stillMine() then exit repeat
+    if ((current date) - startedAt) > $maxsecs then exit repeat
+    set target to my ensureTab(target)
+    if target is missing value then exit repeat
     if my isFront() then
-      -- 前面：平常色を基本にして、1周期に1回だけ薄いオレンジを点灯させる。
-      -- 内側の1周は $ATTENTION_FG_PERIOD 秒ぶん（$FG_TICKS 刻み × $ATTENTION_FG_TICK 秒）。
+      -- 前面：平常色を基本にして、1周期に1回だけ薄い藤色へふわりと明るくする。
+      -- 内側の1周は $ATTENTION_FG_PERIOD 秒ぶん（数列 fgLevels × $FG_STEP 秒）。
       if mode is not "fg" then
         tell application "Terminal"
-          set background color of target to {$O_R, $O_G, $O_B}
+          set background color of target to baseBG
 $t_enable
         end tell
         set mode to "fg"
+        set lastLv to -1
       end if
-      repeat with k from 0 to ($FG_TICKS - 1)
+      set i to 0
+      repeat with lvRef in fgLevels
         if not my stillMine() then exit repeat
-        if not my isFront() then exit repeat
-        if k is 0 then
-          tell application "Terminal" to set background color of target to {$4, $5, $6}
-        else if k is $FG_ON_TICKS then
-          tell application "Terminal" to set background color of target to {$O_R, $O_G, $O_B}
+        set lv to lvRef as integer
+        -- 明るさが前の刻みと同じなら何も送らない（暗いままの大半の時間は無操作）
+        if lv is not lastLv then
+          set c to my blend(baseBG, peakFG, lv)
+          tell application "Terminal"
+            set background color of target to c
+$c_set
+          end tell
+$t_block
+          set lastLv to lv
         end if
-        if (k mod 2) is 0 then
-$c_on
-$t_on
-        else
-$c_off
-$t_off
+        set i to i + 1
+        if (i mod $FRONT_EVERY_FG) is 0 then
+          if not my isFront() then exit repeat
         end if
-        delay $ATTENTION_FG_TICK
+        delay $FG_STEP
       end repeat
     else
-      -- 背面：前面用の装飾を戻し、背景全面を濃いオレンジで速く点滅させる
+      -- 背面：前面用の装飾を戻し、背景全面を藤色でゆっくり明滅させる
       if mode is not "bg" then
         tell application "Terminal"
-          set cursor color of target to {$C_R, $C_G, $C_B}
+          set cursor color of target to baseCUR
 $t_restore
         end tell
         set mode to "bg"
       end if
-      tell application "Terminal" to set background color of target to {$1, $2, $3}
-      delay $BLINK_INTERVAL
-      if not my stillMine() then exit repeat
-      tell application "Terminal" to set background color of target to {$O_R, $O_G, $O_B}
-      delay $BLINK_INTERVAL
+      set i to 0
+      repeat with lvRef in bgLevels
+        if not my stillMine() then exit repeat
+        set c to my blend(baseBG, peakBG, (lvRef as integer))
+        tell application "Terminal" to set background color of target to c
+        set i to i + 1
+        if (i mod $FRONT_EVERY_BG) is 0 then
+          if my isFront() then exit repeat
+        end if
+        delay $BG_STEP
+      end repeat
     end if
   end repeat
 
@@ -411,7 +547,7 @@ case "$STATE" in
     ;;
   attention)
     printf 'attention\n' > "$STATE_FILE"
-    if [ "$BLINK_INTERVAL" = "0" ]; then
+    if [ "$BLINK_STYLE" = "off" ] || [ "$BLINK_INTERVAL" = "0" ]; then
       cancel_bg
       set_bg $(tint "${ATTENTION_TINT[@]}" "$ATTENTION_MIX") "$MYTTY"
     else

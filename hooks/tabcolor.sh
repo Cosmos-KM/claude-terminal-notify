@@ -2,7 +2,7 @@
 # Claude Code / Codex CLI の状態を Terminal.app のタブの見た目で表示する。
 #
 #   tabcolor.sh init       セッション開始：元の背景色・カーソル色・タイトルを記録して無色へ
-#   tabcolor.sh working    作業中：ごく薄い青紫
+#   tabcolor.sh working    作業中：ごく薄い暖色
 #   tabcolor.sh done       完了：薄い緑。フォアグラウンドにすると無色へ戻る
 #   tabcolor.sh attention  承認待ち：応答するまで知らせ続ける（下記）
 #   tabcolor.sh resume     承認待ちだった場合だけ作業中へ戻す（PostToolUse 用・軽量）
@@ -10,9 +10,9 @@
 #   tabcolor.sh reset      平常の色・タイトルを記録し直す（テーマ変更後に1回だけ）
 #
 # 承認待ちの見せ方は、そのタブが最前面かどうかで切り替わる。
-#   バックグラウンド … 背景全面を藤色でゆっくり明滅（離れていても気づけるように）
+#   バックグラウンド … 背景全面を暖色でゆっくり明滅（離れていても気づけるように）
 #   フォアグラウンド … 背景は平常色を基本とし、ATTENTION_FG_PERIOD 秒に1回だけ
-#                      薄い藤色へふわりと明るくして戻す。
+#                      薄い暖色へふわりと明るくして戻す。
 #                      読んでいる最中はほぼ平常色なので文字が読める。
 #
 # 明滅は「明るさ 0〜100 の数列」を先に作り、AppleScript 側はそれを順に流すだけにする。
@@ -29,15 +29,17 @@
 #
 # ─── 設定 ────────────────────────────────────────
 # 元の背景色に混ぜる色と、その割合(%)。割合 0 でその状態は無色のまま。
-WORKING_TINT=(14000 10000 26000);   WORKING_MIX=16    # 作業中：ごく薄い青紫
-DONE_TINT=(0 34000 10000);          DONE_MIX=20       # 完了：薄い緑
-ATTENTION_TINT=(30000 12000 58000); ATTENTION_MIX=30  # 承認待ち（背面）：藤色
-# 承認待ちに赤い色を使うと「エラーが起きた」と読まれてしまうため、
-# 警告の含意が無い藤色にしてある（2026-09-05 に橙から変更）。完了の緑とも
-# 色相がいちばん離れるので、視界の端に入っただけでも取り違えない。
+WORKING_TINT=(26000 13000 0);    WORKING_MIX=16    # 作業中：ごく薄い暖色
+DONE_TINT=(0 34000 10000);       DONE_MIX=20       # 完了：薄い緑
+ATTENTION_TINT=(26000 13000 0);  ATTENTION_MIX=55  # 承認待ち（背面）：同じ暖色を濃く
+# 作業中と承認待ちは同じ黄みの暖色で、濃さだけが違う。赤みの強い橙は
+# 「エラーが起きた」と読まれ、藤色は暗い画面で見えにくかったため、
+# 両方を試したうえでこの形に落ち着いた（2026-09-05）。完了だけが緑。
+# 承認待ちの 55% は、作業中の 16% と輝度で十分離すために要る（28.1 対 41.7）。
+# 同じ色相なので、濃さを近づけると明滅の途中で作業中と見分けがつかなくなる。
 
 # 明滅のしかた。
-#   fade  … 平常色と藤色の間をなめらかに往復する（既定）
+#   fade  … 平常色と暖色の間をなめらかに往復する（既定）
 #   blink … 0か100かで切り替える従来の点滅
 #   off   … 明滅させず点灯したまま
 BLINK_STYLE=fade
@@ -47,16 +49,16 @@ BLINK_STEPS=20             # fade：1往復の段階数。多いほど滑らか�
 BLINK_INTERVAL=0.45        # blink：点滅間隔（秒）。0 は off と同じ扱い
 
 # 承認待ち × フォアグラウンド のときの見せ方
-ATTENTION_FG_MIX=6              # いちばん明るいときの藤色の濃さ（0=平常色のまま）
+ATTENTION_FG_MIX=6              # いちばん明るいときの暖色の濃さ（0=平常色のまま）
 ATTENTION_FG_PERIOD=7           # 明滅の周期（秒）。この間隔で1回ふわりと明るくなる
 ATTENTION_FG_ON=1               # いちばん明るいところで保つ秒数
 ATTENTION_FG_FADE=0.8           # fade：明るくなる／暗くなるのにかける秒数（片道）
 ATTENTION_FG_STEP=0.15          # fade：内部の刻み（秒）
 ATTENTION_FG_TICK=0.5           # blink：内部の刻み（秒）
 ATTENTION_FG_CURSOR=1           # 1=カーソルも背景と一緒に明滅させる / 0=背景だけ
-ATTENTION_CURSOR=(48000 36000 65535)  # 明滅させるカーソル色（明側）。暗側は平常のカーソル色
+ATTENTION_CURSOR=(65535 28000 0)  # 明滅させるカーソル色（明側）。暗側は平常のカーソル色
 ATTENTION_FG_TITLE=0            # 1=タイトルも点滅させる（CLI 側の書き換えと競合する）
-ATTENTION_TITLE_ON="🟣 承認待ち"
+ATTENTION_TITLE_ON="🟠 承認待ち"
 ATTENTION_TITLE_OFF="⚪️ 承認待ち"
 
 FOCUS_CLEAR=1              # 1=完了の緑をフォアグラウンドで消す / 0=次の操作まで残す
@@ -359,8 +361,8 @@ start_watch() {
 }
 
 # 承認待ちの表示を起動。
-#   $1$2$3 = 背面で明滅させる藤色（いちばん明るいとき）
-#   $4$5$6 = 前面で明滅させる薄い藤色（いちばん明るいとき）
+#   $1$2$3 = 背面で明滅させる暖色（いちばん明るいとき）
+#   $4$5$6 = 前面で明滅させる薄い暖色（いちばん明るいとき）
 # osascript 1本が常駐する。色を変える回数だけ Terminal に描き直させるので、
 # 既定（1秒に約7回）で Terminal と合わせて1コアの数%。トークンが変われば自分で終了する。
 start_blink() {
@@ -469,7 +471,7 @@ on run
     set target to my ensureTab(target)
     if target is missing value then exit repeat
     if my isFront() then
-      -- 前面：平常色を基本にして、1周期に1回だけ薄い藤色へふわりと明るくする。
+      -- 前面：平常色を基本にして、1周期に1回だけ薄い暖色へふわりと明るくする。
       -- 内側の1周は $ATTENTION_FG_PERIOD 秒ぶん（数列 fgLevels × $FG_STEP 秒）。
       if mode is not "fg" then
         tell application "Terminal"
@@ -500,7 +502,7 @@ $t_block
         delay $FG_STEP
       end repeat
     else
-      -- 背面：前面用の装飾を戻し、背景全面を藤色でゆっくり明滅させる
+      -- 背面：前面用の装飾を戻し、背景全面を暖色でゆっくり明滅させる
       if mode is not "bg" then
         tell application "Terminal"
           set cursor color of target to baseCUR
